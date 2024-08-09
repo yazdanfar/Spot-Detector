@@ -1,0 +1,8 @@
+numpy
+opencv-python
+matplotlib
+torch
+scikit-image
+pytest
+psutil
+segmentation-models-pytorch
