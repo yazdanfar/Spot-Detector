@@ -4,6 +4,10 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 
+# Streamlit page config
+st.set_page_config(page_title="Blob Detector App", layout="wide")
+
+
 st.write(f"Python version: {sys.version}")
 st.write(f"Current working directory: {os.getcwd()}")
 st.write(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not Set')}")
@@ -45,8 +49,6 @@ except ImportError as e:
 
 import io
 
-# Streamlit page config
-st.set_page_config(page_title="Blob Detector App", layout="wide")
 
 @st.cache_resource
 def load_model(model_path):
