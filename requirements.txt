@@ -1,11 +1,11 @@
 numpy
-opencv-python
-opencv-python-headless
+opencv-python-headless==4.5.5.64
 matplotlib
-torch
+torch==1.13.1
 scikit-image
 pytest
 psutil
 segmentation-models-pytorch
 streamlit
 Pillow
+
