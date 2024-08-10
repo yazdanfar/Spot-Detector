@@ -1,14 +1,17 @@
-from flask import Flask, request, jsonify
-import torch
+import streamlit as st
 import cv2
-import numpy as np
+import torch
 import os
+import matplotlib.pyplot as plt
 from blob_detector import BlobDetector
 from PIL import Image
+import numpy as np
 import io
 
-app = Flask(__name__)
+# Streamlit page config
+st.set_page_config(page_title="Blob Detector App", layout="wide")
 
+@st.cache_resource
 def load_model(model_path):
     # This is a placeholder function. You'll need to implement
     # the actual model loading logic based on your model architecture.
@@ -16,40 +19,78 @@ def load_model(model_path):
     model.eval()
     return model
 
-# Load the model at startup
-model_name = "best_model.pth"
-current_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(current_dir, "models", model_name)
-model = load_model(model_path)
+def plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 
-# Initialize the BlobDetector
-detector = BlobDetector(model, device="cpu")  # Change to "cuda" if using GPU
+    ax1.imshow(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
+    ax1.set_title("Original Image")
+    ax1.axis('off')
 
-@app.route('/detect_blobs', methods=['POST'])
-def detect_blobs():
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image file provided'}), 400
+    ax2.imshow(cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB))
+    ax2.set_title("Processed Image")
+    ax2.axis('off')
 
-    image_file = request.files['image']
-    image = Image.open(image_file)
-    image_np = np.array(image)
-    original_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    plt.suptitle(f"Total blobs: {total_blobs} | r<5: {blobs_r5} | 5<=r<10: {blobs_r10}")
+    plt.tight_layout()
 
-    result_image, total_blobs, blobs_r5, blobs_r10 = detector.process_image(original_image)
+    return fig
 
-    if result_image is not None:
-        # Convert result image to base64 for JSON response
-        _, buffer = cv2.imencode('.png', result_image)
-        result_image_base64 = base64.b64encode(buffer).decode('utf-8')
+def main():
+    st.title("Blob Detector Web App")
 
-        return jsonify({
-            'total_blobs': int(total_blobs),
-            'blobs_r5': int(blobs_r5),
-            'blobs_r10': int(blobs_r10),
-            'result_image': result_image_base64
-        })
+    # Set up paths
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, "models", "best_model.pth")
+
+    # Check if the model file exists
+    if not os.path.exists(model_path):
+        st.error(f"Error: Model file '{model_path}' not found.")
+        return
+
+    # Load the pre-trained model
+    model = load_model(model_path)
+
+    # Initialize the BlobDetector
+    detector = BlobDetector(model, device="cpu")  # Change to "cuda" if using GPU
+
+    # File uploader
+    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png", "bmp"])
+
+    if uploaded_file is not None:
+        # Read the image
+        image = Image.open(uploaded_file)
+        image_np = np.array(image)
+        original_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+
+        # Process the image
+        result_image, total_blobs, blobs_r5, blobs_r10 = detector.process_image(original_image)
+
+        if result_image is not None:
+            # Plot the result
+            fig = plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10)
+
+            # Display the plot
+            st.pyplot(fig)
+
+            # Display blob statistics
+            st.write(f"Total blobs detected: {total_blobs}")
+            st.write(f"Blobs with r<5: {blobs_r5}")
+            st.write(f"Blobs with 5<=r<10: {blobs_r10}")
+
+            # Option to download the result
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png")
+            buf.seek(0)
+            st.download_button(
+                label="Download Result",
+                data=buf,
+                file_name="result.png",
+                mime="image/png"
+            )
+        else:
+            st.error("No ROI detected in the image.")
     else:
-        return jsonify({'error': 'No ROI detected in the image'}), 400
+        st.write("Upload an image to get started!")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    main()
