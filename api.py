@@ -1,6 +1,8 @@
 import streamlit as st
 import sys
 import os
+import matplotlib
+import matplotlib.pyplot as plt
 
 st.write(f"Python version: {sys.version}")
 st.write(f"Current working directory: {os.getcwd()}")
@@ -25,7 +27,6 @@ except ImportError as e:
     st.error(f"Failed to import NumPy: {e}")
 
 try:
-    import matplotlib.pyplot as plt
     st.write(f"Matplotlib version: {matplotlib.__version__}")
 except ImportError as e:
     st.error(f"Failed to import Matplotlib: {e}")
