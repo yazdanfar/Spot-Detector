@@ -1,7 +1,6 @@
 numpy
-opencv-python-headless==4.5.5.64
-matplotlib
-torch==1.13.1
+opencv-python
+torch
 scikit-image
 pytest
 psutil
