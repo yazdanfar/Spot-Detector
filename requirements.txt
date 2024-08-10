@@ -1,8 +1,11 @@
 numpy
 opencv-python
+opencv-python-headless
 matplotlib
 torch
 scikit-image
 pytest
 psutil
 segmentation-models-pytorch
+streamlit
+Pillow
