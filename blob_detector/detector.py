@@ -204,10 +204,10 @@ class BlobDetector:
 
             # Put text on the image
             font = cv2.FONT_HERSHEY_PLAIN
-            cv2.putText(rgb, f'Total blobs: {len(blobs)}', (10, 420), font, 3, (100, 150, 0), 1, cv2.LINE_AA)
-            cv2.putText(rgb, f'Blobs r<5: {blobs_r5}', (10, 435), font, 3, (100, 150, 0), 1, cv2.LINE_AA)
-            cv2.putText(rgb, f'Blobs 5<=r<10: {blobs_r10}', (10, 450), font, 3, (100, 150, 0), 1, cv2.LINE_AA)
-            cv2.putText(rgb, f'Density score: {density_score:.2f}', (10, 465), font, 3, (100, 150, 0), 1, cv2.LINE_AA)
+            cv2.putText(rgb, f'Total blobs: {len(blobs)}', (10, 420), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Blobs r<5: {blobs_r5}', (10, 435), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Blobs 5<=r<10: {blobs_r10}', (10, 450), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Density score: {density_score:.2f}', (10, 465), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
 
             # Draw rectangle and blobs on the original image
             x, y, w, h = bbox
