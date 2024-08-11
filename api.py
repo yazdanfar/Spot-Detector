@@ -3,66 +3,46 @@ import sys
 import os
 import matplotlib
 import matplotlib.pyplot as plt
+import cv2
+import torch
+import numpy as np
+from PIL import Image
+from blob_detector import BlobDetector
+import io
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Streamlit page config
 st.set_page_config(page_title="Blob Detector App", layout="wide")
 
-
+# Display system information
 st.write(f"Python version: {sys.version}")
 st.write(f"Current working directory: {os.getcwd()}")
 st.write(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not Set')}")
-
-try:
-    import cv2
-    st.write(f"OpenCV version: {cv2.__version__}")
-except ImportError as e:
-    st.error(f"Failed to import OpenCV: {e}")
-
-try:
-    import torch
-    st.write(f"PyTorch version: {torch.__version__}")
-except ImportError as e:
-    st.error(f"Failed to import PyTorch: {e}")
-
-try:
-    import numpy as np
-    st.write(f"NumPy version: {np.__version__}")
-except ImportError as e:
-    st.error(f"Failed to import NumPy: {e}")
-
-try:
-    st.write(f"Matplotlib version: {matplotlib.__version__}")
-except ImportError as e:
-    st.error(f"Failed to import Matplotlib: {e}")
-
-try:
-    from PIL import Image
-    st.write(f"Pillow version: {Image.__version__}")
-except ImportError as e:
-    st.error(f"Failed to import Pillow: {e}")
-
-try:
-    from blob_detector import BlobDetector
-    st.write("Successfully imported BlobDetector")
-except ImportError as e:
-    st.error(f"Failed to import BlobDetector: {e}")
-
-import io
+st.write(f"OpenCV version: {cv2.__version__}")
+st.write(f"PyTorch version: {torch.__version__}")
+st.write(f"NumPy version: {np.__version__}")
+st.write(f"Matplotlib version: {matplotlib.__version__}")
+st.write(f"Pillow version: {Image.__version__}")
 
 
 @st.cache_resource
 def load_model(model_path):
     try:
-        # This is a placeholder function. You'll need to implement
-        # the actual model loading logic based on your model architecture.
-        model = torch.load(model_path)
+        model = torch.load(model_path, map_location=torch.device('cpu'))
         model.eval()
+        logger.info(f"Model loaded successfully from {model_path}")
         return model
     except Exception as e:
+        logger.error(f"Failed to load model: {e}")
         st.error(f"Failed to load model: {e}")
         return None
 
-def plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10):
+
+def plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10, density_score):
     try:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 
@@ -74,13 +54,16 @@ def plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10):
         ax2.set_title("Processed Image")
         ax2.axis('off')
 
-        plt.suptitle(f"Total blobs: {total_blobs} | r<5: {blobs_r5} | 5<=r<10: {blobs_r10}")
+        plt.suptitle(
+            f"Total blobs: {total_blobs} | r<5: {blobs_r5} | 5<=r<10: {blobs_r10} | Density score: {density_score:.2f}")
         plt.tight_layout()
 
         return fig
     except Exception as e:
+        logger.error(f"Error in plot_result: {e}")
         st.error(f"Error in plot_result: {e}")
         return None
+
 
 def main():
     st.title("Blob Detector Web App")
@@ -91,6 +74,7 @@ def main():
 
     # Check if the model file exists
     if not os.path.exists(model_path):
+        logger.error(f"Error: Model file '{model_path}' not found.")
         st.error(f"Error: Model file '{model_path}' not found.")
         return
 
@@ -102,8 +86,10 @@ def main():
     # Initialize the BlobDetector
     try:
         detector = BlobDetector(model, device="cpu")  # Change to "cuda" if using GPU
+        logger.info("BlobDetector initialized successfully")
         st.success("BlobDetector initialized successfully")
     except Exception as e:
+        logger.error(f"Failed to initialize BlobDetector: {e}")
         st.error(f"Failed to initialize BlobDetector: {e}")
         return
 
@@ -118,11 +104,13 @@ def main():
             original_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
             # Process the image
-            result_image, total_blobs, blobs_r5, blobs_r10 = detector.process_image(original_image)
+            result = detector.process_image(original_image)
 
-            if result_image is not None:
+            if result[0] is not None:
+                result_image, total_blobs, blobs_r5, blobs_r10, density_score = result
+
                 # Plot the result
-                fig = plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10)
+                fig = plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10, density_score)
 
                 if fig is not None:
                     # Display the plot
@@ -132,6 +120,7 @@ def main():
                     st.write(f"Total blobs detected: {total_blobs}")
                     st.write(f"Blobs with r<5: {blobs_r5}")
                     st.write(f"Blobs with 5<=r<10: {blobs_r10}")
+                    st.write(f"Density score: {density_score:.2f}")
 
                     # Option to download the result
                     buf = io.BytesIO()
@@ -144,11 +133,14 @@ def main():
                         mime="image/png"
                     )
             else:
-                st.error("No ROI detected in the image.")
+                logger.warning("No ROI detected in the image.")
+                st.warning("No ROI detected in the image.")
         except Exception as e:
+            logger.error(f"An error occurred while processing the image: {e}")
             st.error(f"An error occurred while processing the image: {e}")
     else:
         st.write("Upload an image to get started!")
+
 
 if __name__ == "__main__":
     main()
