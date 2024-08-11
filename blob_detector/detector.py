@@ -10,6 +10,7 @@ import logging
 import time
 import psutil
 import os
+import math
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,8 +59,9 @@ class BlobDetector:
         x_tensor = torch.from_numpy(image).float().to(self.device)
         x_tensor /= 255.0
         x_tensor = x_tensor.permute(2, 0, 1).unsqueeze(0)
-        pr_mask = self.model.predict(x_tensor)
-        return (pr_mask.squeeze().cpu().numpy().round()).astype(np.uint8)
+        with torch.no_grad():
+            pr_mask = self.model(x_tensor)
+        return (pr_mask.squeeze().cpu().numpy() > 0.5).astype(np.uint8)
 
     def process_binary_image(self, binary_image: np.ndarray) -> np.ndarray:
         """
@@ -90,12 +92,12 @@ class BlobDetector:
             Tuple[Optional[np.ndarray], Optional[Tuple[int, int, int, int]]]: ROI image and bounding box coordinates.
         """
         mask = cv2.inRange(binary_image, 127, 255)
-        bbox = cv2.boundingRect(mask)
-        if bbox is not None:
-            x, y, w, h = bbox
-            cv2.rectangle(image, (x + 2, y + 2), (x + w + 10, y + h), (255, 0, 0), 10)
-            roi = image[y + 2:y + h, x + 2:x + w + 10]
-            return roi, (x + 2, y + 2, w + 8, h - 2)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            largest_contour = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            roi = image[y:y+h, x:x+w]
+            return roi, (x, y, w, h)
         return None, None
 
     def detect_blobs(self, roi: np.ndarray) -> np.ndarray:
@@ -113,19 +115,40 @@ class BlobDetector:
         blobs_log[:, 2] = blobs_log[:, 2] * np.sqrt(2)
         return blobs_log
 
-    def draw_blobs(self, roi: np.ndarray, blobs: np.ndarray) -> Tuple[int, int]:
+    def calculate_density_score(self, blobs: np.ndarray, roi_area: float) -> float:
         """
-        Draw detected blobs on the ROI image.
+        Calculate a density-based logarithmic score.
+
+        Args:
+            blobs (np.ndarray): Detected blobs.
+            roi_area (float): Area of the region of interest in pixels.
+
+        Returns:
+            float: Density-based logarithmic score.
+        """
+        spot_count = len(blobs)
+        if spot_count == 0 or roi_area == 0:
+            return 0.0
+
+        density = spot_count / roi_area
+        return math.log10(1 + density * 1000)  # Multiply by 1000 to scale up small densities
+
+    def draw_blobs(self, roi: np.ndarray, blobs: np.ndarray, roi_area: float) -> Tuple[int, int, float]:
+        """
+        Draw detected blobs on the ROI image and calculate the density-based score.
 
         Args:
             roi (np.ndarray): Region of interest image.
             blobs (np.ndarray): Detected blobs.
+            roi_area (float): Area of the region of interest in pixels.
 
         Returns:
-            Tuple[int, int]: Number of blobs with r<5 and 5<=r<10.
+            Tuple[int, int, float]: Number of blobs with r<5, 5<=r<10, and the density-based score.
         """
         blobs_r5 = 0
         blobs_r10 = 0
+        density_score = self.calculate_density_score(blobs, roi_area)
+
         for blob in blobs:
             y, x, r = blob
             if r < 5:
@@ -138,19 +161,19 @@ class BlobDetector:
                 color = [0, 0, 255]  # Blue for r >= 10
             rr, cc = draw.circle_perimeter(int(y), int(x), int(r), shape=roi.shape[:2])
             roi[rr, cc] = color
-        return blobs_r5, blobs_r10
+        return blobs_r5, blobs_r10, density_score
 
-    def process_image(self, image_path: str) -> Tuple[Optional[np.ndarray], int, int, int]:
+    def process_image(self, image_path: str) -> Tuple[Optional[np.ndarray], int, int, int, float]:
         """
-        Process an image for blob detection.
+        Process an image for blob detection and score calculation.
 
         Args:
             image_path (str): Path to the input image.
 
         Returns:
-            Tuple[Optional[np.ndarray], int, int, int]:
-                Processed image with blobs detected, total blobs, blobs with r<5, blobs with 5<=r<10.
-                If no ROI is detected, returns (None, 0, 0, 0).
+            Tuple[Optional[np.ndarray], int, int, int, float]:
+                Processed image with blobs detected, total blobs, blobs with r<5, blobs with 5<=r<10, and density-based score.
+                If no ROI is detected, returns (None, 0, 0, 0, 0.0).
         """
         start_time = time.time()
         process = psutil.Process(os.getpid())
@@ -174,14 +197,17 @@ class BlobDetector:
             blobs = self.detect_blobs(roi)
             logger.info(f"Blobs detected: {len(blobs)}")
 
-            blobs_r5, blobs_r10 = self.draw_blobs(roi, blobs)
+            roi_area = bbox[2] * bbox[3]  # width * height
+            blobs_r5, blobs_r10, density_score = self.draw_blobs(roi, blobs, roi_area)
             logger.info(f"Blobs drawn: {blobs_r5} with r<5, {blobs_r10} with 5<=r<10")
+            logger.info(f"Density-based score: {density_score:.2f}")
 
             # Put text on the image
             font = cv2.FONT_HERSHEY_PLAIN
-            cv2.putText(rgb, f'Total blobs: {len(blobs)}', (10, 420), font, 1, (200, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(rgb, f'Blobs r<5: {blobs_r5}', (10, 440), font, 1, (200, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(rgb, f'Blobs 5<=r<10: {blobs_r10}', (10, 460), font, 1, (200, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Total blobs: {len(blobs)}', (10, 400), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Blobs r<5: {blobs_r5}', (10, 420), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Blobs 5<=r<10: {blobs_r10}', (10, 440), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
+            cv2.putText(rgb, f'Density score: {density_score:.2f}', (10, 460), font, 1, (100, 150, 0), 2, cv2.LINE_AA)
 
             # Draw rectangle and blobs on the original image
             x, y, w, h = bbox
@@ -194,7 +220,7 @@ class BlobDetector:
             logger.info(f"Image processing completed in {end_time - start_time:.2f} seconds")
             logger.info(f"Memory usage: {end_memory - start_memory:.2f} MB")
 
-            return rgb, len(blobs), blobs_r5, blobs_r10
+            return rgb, len(blobs), blobs_r5, blobs_r10, density_score
         else:
             logger.warning("No ROI detected")
             end_time = time.time()
@@ -203,4 +229,4 @@ class BlobDetector:
             logger.info(f"Image processing completed in {end_time - start_time:.2f} seconds")
             logger.info(f"Memory usage: {end_memory - start_memory:.2f} MB")
 
-            return None, 0, 0, 0
+            return None, 0, 0, 0, 0.0

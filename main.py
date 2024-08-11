@@ -15,18 +15,14 @@ def load_model(model_path):
     return model
 
 
-def plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+def plot_result(result_image, total_blobs, blobs_r5, blobs_r10, density_score):
+    fig, ax = plt.subplots(figsize=(8, 6))
 
-    ax1.imshow(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
-    ax1.set_title("Original Image")
-    ax1.axis('off')
+    ax.imshow(cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB))
+    ax.set_title("Processed Image")
+    ax.axis('off')
 
-    ax2.imshow(cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB))
-    ax2.set_title("Processed Image")
-    ax2.axis('off')
-
-    plt.suptitle(f"Total blobs: {total_blobs} | r<5: {blobs_r5} | 5<=r<10: {blobs_r10}")
+    plt.suptitle(f"Total blobs: {total_blobs} | r<5: {blobs_r5} | 5<=r<10: {blobs_r10} | Density score: {density_score:.2f}")
     plt.tight_layout()
 
     return fig
@@ -78,15 +74,12 @@ def main():
     # Initialize the BlobDetector
     detector = BlobDetector(model, device=args.device)
 
-    # Read the original image
-    original_image = cv2.imread(args.image_path)
-
     # Process the image
-    result_image, total_blobs, blobs_r5, blobs_r10 = detector.process_image(args.image_path)
+    result_image, total_blobs, blobs_r5, blobs_r10, density_score = detector.process_image(args.image_path)
 
     if result_image is not None:
         # Plot the result
-        fig = plot_result(original_image, result_image, total_blobs, blobs_r5, blobs_r10)
+        fig = plot_result(result_image, total_blobs, blobs_r5, blobs_r10, density_score)
 
         # Save the plot as a temporary file
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
@@ -102,6 +95,7 @@ def main():
         print(f"Total blobs detected: {total_blobs}")
         print(f"Blobs with r<5: {blobs_r5}")
         print(f"Blobs with 5<=r<10: {blobs_r10}")
+        print(f"Density score: {density_score:.2f}")
 
         # Show the plot
         plt.show()
