@@ -10,6 +10,7 @@ from PIL import Image
 from blob_detector import BlobDetector
 import io
 import logging
+import tempfile
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -108,8 +109,16 @@ def main():
             else:
                 original_image = image_np  # Grayscale image
 
+            # Save the image to a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
+                temp_filename = temp_file.name
+                cv2.imwrite(temp_filename, original_image)
+
             # Process the image
-            result = detector.process_image(original_image)
+            result = detector.process_image(temp_filename)
+
+            # Remove the temporary file
+            os.unlink(temp_filename)
 
             if result[0] is not None:
                 result_image, total_blobs, blobs_r5, blobs_r10, density_score = result
